@@ -142,6 +142,16 @@
     .diary-body {
       white-space: pre-wrap;
       font-size: 0.95rem;
+      margin-bottom: 8px;
+    }
+    /* 追加：画像スタイル */
+    .diary-image {
+      width: 100%;
+      max-height: 250px;
+      object-fit: cover;
+      border-radius: 6px;
+      margin-top: 8px;
+      border: 1px solid #ddd;
     }
     .hidden {
       display: none;
@@ -174,7 +184,7 @@
       <button id="tab-all" class="tab-button">みんなの記録 🌐</button>
     </div>
 
-    <!-- 日誌入力フォーム（「自分の記録」タブの時のみ有効） -->
+    <!-- 日誌入力フォーム -->
     <div id="form-area">
       <form id="diary-form">
         <div>
@@ -188,6 +198,11 @@
         <div>
           <label for="input-memo">作業記録・成長メモ</label>
           <textarea id="input-memo" placeholder="例: 追肥を実施。実が大きくなってきた。" required></textarea>
+        </div>
+        <!-- 追加：画像URLの入力欄 -->
+        <div>
+          <label for="input-image">成長写真のWeb画像URL（任意）</label>
+          <input type="url" id="input-image" placeholder="https://example.com/image.jpg">
         </div>
         <button type="submit">日誌を保存する</button>
       </form>
@@ -240,7 +255,7 @@
 
   let currentUser = null;
   let unsubscribeSnapshot = null;
-  let currentTab = "my"; // "my" または "all"
+  let currentTab = "my";
 
   // 1. Googleログイン
   btnLogin.addEventListener("click", async () => {
@@ -294,7 +309,7 @@
     }
   }
 
-  // 4. データ保存
+  // 4. データ保存（imageUrlを追加）
   diaryForm.addEventListener("submit", async (e) => {
     e.preventDefault();
     if (!currentUser) return;
@@ -302,6 +317,7 @@
     const date = document.getElementById("input-date").value;
     const cropName = document.getElementById("input-crop").value;
     const memo = document.getElementById("input-memo").value;
+    const imageUrl = document.getElementById("input-image").value;
 
     try {
       await addDoc(collection(db, "diaries"), {
@@ -310,11 +326,13 @@
         date: date,
         cropName: cropName,
         memo: memo,
+        imageUrl: imageUrl, // 画像URLを保存
         createdAt: serverTimestamp()
       });
 
       document.getElementById("input-crop").value = "";
       document.getElementById("input-memo").value = "";
+      document.getElementById("input-image").value = "";
       alert("保存しました！");
     } catch (error) {
       console.error("保存エラー:", error);
@@ -322,7 +340,7 @@
     }
   });
 
-  // 5. データ読み込み (自分の記録 vs みんなの記録)
+  // 5. データ読み込み（画像表示の処理を追加）
   function loadDiaries() {
     if (unsubscribeSnapshot) unsubscribeSnapshot();
 
@@ -359,6 +377,12 @@
           deleteBtnHtml = `<button class="btn-delete" data-id="${data.id}">削除</button>`;
         }
 
+        // 追加：画像タグの生成（URLが存在する場合のみ表示）
+        let imageHtml = "";
+        if (data.imageUrl) {
+          imageHtml = `<img src="${escapeHTML(data.imageUrl)}" class="diary-image" alt="作物の写真" onerror="this.style.display='none'">`;
+        }
+
         card.innerHTML = `
           ${userTagHtml}
           <div class="diary-header">
@@ -366,6 +390,7 @@
             ${deleteBtnHtml}
           </div>
           <div class="diary-body">${escapeHTML(data.memo)}</div>
+          ${imageHtml}
         `;
         diaryList.appendChild(card);
       });
@@ -386,7 +411,7 @@
       });
     }, (error) => {
       console.error("読み込みエラー:", error);
-      diaryList.innerHTML = "<p>データの取得に失敗しました。セキュリティルールを確認してください。</p>";
+      diaryList.innerHTML = "<p>データの取得に失敗しました。</p>";
     });
   }
 
