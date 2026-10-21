@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>農作物 栽培日誌</title>
+  <style>
+    :root {
+      --primary-color: #2e7d32;
+      --bg-color: #f4f6f8;
+      --card-bg: #ffffff;
+      --text-color: #333333;
+      --danger-color: #d32f2f;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background-color: var(--bg-color);
+      color: var(--text-color);
+      margin: 0;
+      padding: 16px;
+      display: flex;
+      justify-content: center;
+    }
+    .container {
+      width: 100%;
+      max-width: 600px;
+      background: var(--card-bg);
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      box-sizing: border-box;
+    }
+    h1 {
+      color: var(--primary-color);
+      font-size: 1.5rem;
+      margin-top: 0;
+      text-align: center;
+    }
+    .auth-section {
+      text-align: center;
+      margin-bottom: 20px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid #eee;
+    }
+    button {
+      background-color: var(--primary-color);
+      color: white;
+      border: none;
+      padding: 10px 16px;
+      border-radius: 6px;
+      font-size: 0.95rem;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    button:hover {
+      opacity: 0.9;
+    }
+    .btn-logout {
+      background-color: #757575;
+      font-size: 0.8rem;
+      padding: 6px 12px;
+    }
+    .btn-delete {
+      background-color: var(--danger-color);
+      font-size: 0.8rem;
+      padding: 4px 8px;
+    }
+    form {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+    label {
+      font-weight: bold;
+      font-size: 0.85rem;
+    }
+    input, textarea {
+      width: 100%;
+      padding: 8px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      box-sizing: border-box;
+      font-size: 1rem;
+    }
+    textarea {
+      resize: vertical;
+      height: 80px;
+    }
+    .diary-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .diary-card {
+      border-left: 4px solid var(--primary-color);
+      background: #fafafa;
+      padding: 12px;
+      border-radius: 4px;
+      position: relative;
+    }
+    .diary-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-weight: bold;
+      font-size: 0.9rem;
+      margin-bottom: 6px;
+      color: #555;
+    }
+    .diary-body {
+      white-space: pre-wrap;
+      font-size: 0.95rem;
+    }
+    .hidden {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <h1>🌱 農作物 栽培日誌</h1>
+
+  <!-- 認証エリア -->
+  <div class="auth-section">
+    <div id="login-view">
+      <p>日誌を記録・閲覧するにはログインしてください</p>
+      <button id="btn-login">Googleアカウントでログイン</button>
+    </div>
+    <div id="user-view" class="hidden">
+      <p><span id="user-name"></span> さんとしてログイン中</p>
+      <button id="btn-logout" class="btn-logout">ログアウト</button>
+    </div>
+  </div>
+
+  <!-- メインコンテンツ（ログイン時のみ表示） -->
+  <main id="app-content" class="hidden">
+    <!-- 日誌入力フォーム -->
+    <form id="diary-form">
+      <div>
+        <label for="input-date">日付</label>
+        <input type="date" id="input-date" required>
+      </div>
+      <div>
+        <label for="input-crop">作物名</label>
+        <input type="text" id="input-crop" placeholder="例: トマト, ナス" required>
+      </div>
+      <div>
+        <label for="input-memo">作業記録・成長メモ</label>
+        <textarea id="input-memo" placeholder="例: 追肥を実施。実が大きくなってきた。" required></textarea>
+      </div>
+      <button type="submit">日誌を保存する</button>
+    </form>
+
+    <!-- 日誌一覧表示エリア -->
+    <h2>これまでの記録</h2>
+    <div id="diary-list" class="diary-list">
+      <p>読み込み中...</p>
+    </div>
+  </main>
+</div>
+
+<!-- Firebase SDK (v10 modular) -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+  import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+  import { getFirestore, collection, addDoc, query, where, onSnapshot, serverTimestamp, doc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+  // 提供されたFirebase設定情報
+  const firebaseConfig = {
+    apiKey: "AIzaSyBNX6T1YDiQeVdrEHwEgoLVdpj8Bb1Eupc",
+    authDomain: "task9-71579.firebaseapp.com",
+    projectId: "task9-71579",
+    storageBucket: "task9-71579.firebasestorage.app",
+    messagingSenderId: "748450048339",
+    appId: "1:748450048339:web:b6ee4d4a869ef0b9da99a6"
+  };
+
+  // Firebase初期化
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
+  const provider = new GoogleAuthProvider();
+
+  // DOM要素
+  const loginView = document.getElementById("login-view");
+  const userView = document.getElementById("user-view");
+  const userName = document.getElementById("user-name");
+  const appContent = document.getElementById("app-content");
+  const btnLogin = document.getElementById("btn-login");
+  const btnLogout = document.getElementById("btn-logout");
+  const diaryForm = document.getElementById("diary-form");
+  const diaryList = document.getElementById("diary-list");
+  const inputDate = document.getElementById("input-date");
+
+  // 今日の日付を初期値にセット
+  inputDate.valueAsDate = new Date();
+
+  let currentUser = null;
+  let unsubscribeSnapshot = null;
+
+  // 1. Googleログイン
+  btnLogin.addEventListener("click", async () => {
+    try {
+      await signInWithPopup(auth, provider);
+    } catch (error) {
+      console.error("ログインエラー:", error);
+      alert("ログインに失敗しました: " + error.message);
+    }
+  });
+
+  // ログアウト
+  btnLogout.addEventListener("click", () => {
+    signOut(auth);
+  });
+
+  // 2. ログイン状態の監視
+  onAuthStateChanged(auth, (user) => {
+    currentUser = user;
+    if (user) {
+      userName.textContent = user.displayName || "ユーザー";
+      loginView.classList.add("hidden");
+      userView.classList.remove("hidden");
+      appContent.classList.remove("hidden");
+      loadDiaries(user.uid);
+    } else {
+      loginView.classList.remove("hidden");
+      userView.classList.add("hidden");
+      appContent.classList.add("hidden");
+      diaryList.innerHTML = "";
+      if (unsubscribeSnapshot) unsubscribeSnapshot();
+    }
+  });
+
+  // 3. データ保存 (Firestore)
+  diaryForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (!currentUser) return;
+
+    const date = document.getElementById("input-date").value;
+    const cropName = document.getElementById("input-crop").value;
+    const memo = document.getElementById("input-memo").value;
+
+    try {
+      await addDoc(collection(db, "diaries"), {
+        uid: currentUser.uid,
+        date: date,
+        cropName: cropName,
+        memo: memo,
+        createdAt: serverTimestamp()
+      });
+
+      document.getElementById("input-crop").value = "";
+      document.getElementById("input-memo").value = "";
+      alert("保存しました！");
+    } catch (error) {
+      console.error("保存エラー:", error);
+      alert("データの保存に失敗しました。");
+    }
+  });
+
+  // 4. データ読み込み (Firestore リアルタイム監視)
+  function loadDiaries(uid) {
+    const q = query(
+      collection(db, "diaries"),
+      where("uid", "==", uid)
+    );
+
+    unsubscribeSnapshot = onSnapshot(q, (snapshot) => {
+      diaryList.innerHTML = "";
+      if (snapshot.empty) {
+        diaryList.innerHTML = "<p>まだ記録がありません。投稿してみましょう！</p>";
+        return;
+      }
+
+      // クライアント側で日付（date）の降順にソート（インデックスエラー回避のため）
+      const docs = [];
+      snapshot.forEach(doc => docs.push({ id: doc.id, ...doc.data() }));
+      docs.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+
+      docs.forEach((data) => {
+        const card = document.createElement("div");
+        card.className = "diary-card";
+        card.innerHTML = `
+          <div class="diary-header">
+            <span>📅 ${escapeHTML(data.date)} | 🥬 ${escapeHTML(data.cropName)}</span>
+            <button class="btn-delete" data-id="${data.id}">削除</button>
+          </div>
+          <div class="diary-body">${escapeHTML(data.memo)}</div>
+        `;
+        diaryList.appendChild(card);
+      });
+
+      // 削除ボタンのイベントリスナー設定
+      document.querySelectorAll(".btn-delete").forEach(button => {
+        button.addEventListener("click", async (e) => {
+          const id = e.target.getAttribute("data-id");
+          if (confirm("この記録を削除しますか？")) {
+            try {
+              await deleteDoc(doc(db, "diaries", id));
+            } catch (err) {
+              console.error("削除エラー:", err);
+              alert("削除に失敗しました。");
+            }
+          }
+        });
+      });
+    }, (error) => {
+      console.error("読み込みエラー:", error);
+      diaryList.innerHTML = "<p>データの取得に失敗しました。</p>";
+    });
+  }
+
+  // XSS対策用エスケープ処理
+  function escapeHTML(str) {
+    if (!str) return "";
+    return str.replace(/[&<>'"]/g, 
+      tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag)
+    );
+  }
+</script>
+</body>
+</html>
