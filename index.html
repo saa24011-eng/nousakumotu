@@ -141,6 +141,31 @@
       resize: vertical;
       height: 80px;
     }
+
+    /* 作業タグチェックボックスのグループ */
+    .tag-checkbox-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 4px;
+    }
+    .tag-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: #f0f0f0;
+      padding: 6px 10px;
+      border-radius: 16px;
+      font-size: 0.85rem;
+      font-weight: normal;
+      cursor: pointer;
+      user-select: none;
+    }
+    .tag-label input[type="checkbox"] {
+      width: auto;
+      margin: 0;
+    }
+
     .diary-list {
       display: flex;
       flex-direction: column;
@@ -171,16 +196,33 @@
       margin-bottom: 6px;
       display: inline-block;
     }
+    
+    /* 記録表示用バッジ */
+    .tags-container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      margin-bottom: 6px;
+    }
+    .work-badge {
+      display: inline-block;
+      background: #e1f5fe;
+      color: #0288d1;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 0.75rem;
+      font-weight: bold;
+    }
     .harvest-tag {
       display: inline-block;
       background: #fff3e0;
       color: #e65100;
       padding: 2px 8px;
       border-radius: 12px;
-      font-size: 0.8rem;
+      font-size: 0.75rem;
       font-weight: bold;
-      margin-bottom: 6px;
     }
+
     .diary-body {
       white-space: pre-wrap;
       font-size: 0.95rem;
@@ -248,9 +290,22 @@
           <label for="input-crop">作物名</label>
           <input type="text" id="input-crop" placeholder="例: トマト, ナス" required>
         </div>
+
+        <!-- 追加：作業タグのチェックボックス -->
+        <div>
+          <label>実施した作業内容</label>
+          <div class="tag-checkbox-group">
+            <label class="tag-label"><input type="checkbox" name="work-tag" value="💧 水やり">💧 水やり</label>
+            <label class="tag-label"><input type="checkbox" name="work-tag" value="🧪 追肥">🧪 追肥</label>
+            <label class="tag-label"><input type="checkbox" name="work-tag" value="🐛 害虫・病気対策">🐛 害虫・病気対策</label>
+            <label class="tag-label"><input type="checkbox" name="work-tag" value="✂️ 剪定・わき芽かき">✂️ 剪定・わき芽かき</label>
+            <label class="tag-label"><input type="checkbox" name="work-tag" value="🧺 収穫">🧺 収穫</label>
+          </div>
+        </div>
+
         <div>
           <label for="input-memo">作業記録・成長メモ</label>
-          <textarea id="input-memo" placeholder="例: 追肥を実施。実が大きくなってきた。" required></textarea>
+          <textarea id="input-memo" placeholder="例: 葉の裏を確認。実が大きくなってきた。" required></textarea>
         </div>
         <div>
           <label for="input-image">成長写真のWeb画像URL（任意）</label>
@@ -327,173 +382,4 @@
     currentUser = user;
     if (user) {
       userName.textContent = user.displayName || "ユーザー";
-      loginView.classList.add("hidden");
-      userView.classList.remove("hidden");
-      appContent.classList.remove("hidden");
-      switchTab("my");
-    } else {
-      loginView.classList.remove("hidden");
-      userView.classList.add("hidden");
-      appContent.classList.add("hidden");
-      diaryList.innerHTML = "";
-      if (unsubscribeSnapshot) unsubscribeSnapshot();
-    }
-  });
-
-  // 3. タブ切り替え処理
-  tabMy.addEventListener("click", () => switchTab("my"));
-  tabAll.addEventListener("click", () => switchTab("all"));
-
-  function switchTab(tab) {
-    currentTab = tab;
-    if (tab === "my") {
-      tabMy.classList.add("active");
-      tabAll.classList.remove("active");
-      formArea.classList.remove("hidden");
-      listTitle.textContent = "自分の記録一覧";
-    } else {
-      tabAll.classList.add("active");
-      tabMy.classList.remove("active");
-      formArea.classList.add("hidden");
-      listTitle.textContent = "みんなの栽培記録 タイムライン";
-    }
-    if (currentUser) {
-      loadDiaries();
-    }
-  }
-
-  // 4. データ保存（harvestAmountを追加）
-  diaryForm.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    if (!currentUser) return;
-
-    const date = document.getElementById("input-date").value;
-    const cropName = document.getElementById("input-crop").value;
-    const memo = document.getElementById("input-memo").value;
-    const imageUrl = document.getElementById("input-image").value;
-    const harvestInput = document.getElementById("input-harvest").value;
-    const harvestAmount = harvestInput ? parseFloat(harvestInput) : 0;
-
-    try {
-      await addDoc(collection(db, "diaries"), {
-        uid: currentUser.uid,
-        userName: currentUser.displayName || "匿名農家",
-        date: date,
-        cropName: cropName,
-        memo: memo,
-        imageUrl: imageUrl,
-        harvestAmount: harvestAmount, // 収穫量(kg)を数値で保存
-        createdAt: serverTimestamp()
-      });
-
-      document.getElementById("input-crop").value = "";
-      document.getElementById("input-memo").value = "";
-      document.getElementById("input-image").value = "";
-      document.getElementById("input-harvest").value = "";
-      alert("保存しました！");
-    } catch (error) {
-      console.error("保存エラー:", error);
-      alert("データの保存に失敗しました。");
-    }
-  });
-
-  // 5. データ読み込み＆収穫量の自動集計
-  function loadDiaries() {
-    if (unsubscribeSnapshot) unsubscribeSnapshot();
-
-    let q;
-    if (currentTab === "my") {
-      q = query(collection(db, "diaries"), where("uid", "==", currentUser.uid));
-    } else {
-      q = query(collection(db, "diaries"));
-    }
-
-    unsubscribeSnapshot = onSnapshot(q, (snapshot) => {
-      diaryList.innerHTML = "";
-      let totalHarvest = 0;
-
-      if (snapshot.empty) {
-        diaryList.innerHTML = "<p>該当する記録がありません。</p>";
-        totalHarvestEl.textContent = "0";
-        return;
-      }
-
-      const docs = [];
-      snapshot.forEach(doc => docs.push({ id: doc.id, ...doc.data() }));
-      docs.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
-
-      docs.forEach((data) => {
-        // 収穫量の合算（数値の場合のみ加算）
-        if (data.harvestAmount && !isNaN(data.harvestAmount)) {
-          totalHarvest += parseFloat(data.harvestAmount);
-        }
-
-        const isMyPost = data.uid === currentUser.uid;
-        const card = document.createElement("div");
-        card.className = "diary-card";
-        
-        let userTagHtml = "";
-        if (currentTab === "all") {
-          userTagHtml = `<div class="user-tag">👤 ${escapeHTML(data.userName || "匿名農家")}${isMyPost ? " (自分)" : ""}</div>`;
-        }
-
-        let harvestTagHtml = "";
-        if (data.harvestAmount && data.harvestAmount > 0) {
-          harvestTagHtml = `<div class="harvest-tag">🌾 収穫: ${data.harvestAmount} kg</div>`;
-        }
-
-        let deleteBtnHtml = "";
-        if (isMyPost) {
-          deleteBtnHtml = `<button class="btn-delete" data-id="${data.id}">削除</button>`;
-        }
-
-        let imageHtml = "";
-        if (data.imageUrl) {
-          imageHtml = `<img src="${escapeHTML(data.imageUrl)}" class="diary-image" alt="作物の写真" onerror="this.style.display='none'">`;
-        }
-
-        card.innerHTML = `
-          ${userTagHtml}
-          <div class="diary-header">
-            <span>📅 ${escapeHTML(data.date)} | 🥬 ${escapeHTML(data.cropName)}</span>
-            ${deleteBtnHtml}
-          </div>
-          ${harvestTagHtml}
-          <div class="diary-body">${escapeHTML(data.memo)}</div>
-          ${imageHtml}
-        `;
-        diaryList.appendChild(card);
-      });
-
-      // 合計収穫量の更新（小数第1位まで表示）
-      totalHarvestEl.textContent = (Math.round(totalHarvest * 10) / 10).toString();
-
-      // 削除イベント登録
-      document.querySelectorAll(".btn-delete").forEach(button => {
-        button.addEventListener("click", async (e) => {
-          const id = e.target.getAttribute("data-id");
-          if (confirm("この記録を削除しますか？")) {
-            try {
-              await deleteDoc(doc(db, "diaries", id));
-            } catch (err) {
-              console.error("削除エラー:", err);
-              alert("削除に失敗しました。");
-            }
-          }
-        });
-      });
-    }, (error) => {
-      console.error("読み込みエラー:", error);
-      diaryList.innerHTML = "<p>データの取得に失敗しました。</p>";
-    });
-  }
-
-  function escapeHTML(str) {
-    if (!str) return "";
-    return str.replace(/[&<>'"]/g, 
-      tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&#34;' }[tag] || tag)
-    );
-  }
-</script>
-</body>
-</html>
+      loginView
