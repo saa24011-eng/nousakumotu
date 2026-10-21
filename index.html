@@ -129,7 +129,7 @@
       display: block;
       margin-bottom: 4px;
     }
-    input, textarea {
+    input, textarea, select {
       width: 100%;
       padding: 8px;
       border: 1px solid #ccc;
@@ -142,7 +142,31 @@
       height: 80px;
     }
 
-    /* 作業タグチェックボックスのグループ */
+    /* 天気ラジオボタンデザイン */
+    .weather-radio-group {
+      display: flex;
+      gap: 8px;
+    }
+    .weather-label {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      background: #f0f0f0;
+      padding: 8px;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      cursor: pointer;
+      user-select: none;
+      border: 1px solid #ccc;
+    }
+    .weather-label input[type="radio"] {
+      width: auto;
+      margin: 0;
+    }
+
+    /* 作業タグチェックボックス */
     .tag-checkbox-group {
       display: flex;
       flex-wrap: wrap;
@@ -203,6 +227,15 @@
       flex-wrap: wrap;
       gap: 4px;
       margin-bottom: 6px;
+    }
+    .weather-badge {
+      display: inline-block;
+      background: #fff8e1;
+      color: #f57f17;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 0.75rem;
+      font-weight: bold;
     }
     .work-badge {
       display: inline-block;
@@ -282,16 +315,35 @@
             <input type="date" id="input-date" required>
           </div>
           <div>
+            <label for="input-crop">作物名</label>
+            <input type="text" id="input-crop" placeholder="例: トマト, ナス" required>
+          </div>
+        </div>
+
+        <!-- 追加：天気と気温 -->
+        <div class="form-row">
+          <div style="flex: 2;">
+            <label>天気</label>
+            <div class="weather-radio-group">
+              <label class="weather-label"><input type="radio" name="weather" value="晴れ ☀️" checked>晴れ ☀️</label>
+              <label class="weather-label"><input type="radio" name="weather" value="曇り ☁️">曇り ☁️</label>
+              <label class="weather-label"><input type="radio" name="weather" value="雨 🌧️">雨 🌧️</label>
+            </div>
+          </div>
+          <div style="flex: 1;">
+            <label for="input-temp">気温 (℃)</label>
+            <input type="number" id="input-temp" step="0.1" placeholder="25.0">
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div>
             <label for="input-harvest">収穫量 (kg)</label>
             <input type="number" id="input-harvest" step="0.1" min="0" placeholder="0.0">
           </div>
         </div>
-        <div>
-          <label for="input-crop">作物名</label>
-          <input type="text" id="input-crop" placeholder="例: トマト, ナス" required>
-        </div>
 
-        <!-- 追加：作業タグのチェックボックス -->
+        <!-- 作業タグ -->
         <div>
           <label>実施した作業内容</label>
           <div class="tag-checkbox-group">
@@ -305,7 +357,7 @@
 
         <div>
           <label for="input-memo">作業記録・成長メモ</label>
-          <textarea id="input-memo" placeholder="例: 葉の裏を確認。実が大きくなってきた。" required></textarea>
+          <textarea id="input-memo" placeholder="例: 葉の裏を確認。日当たりが良いため実の付きが良い。" required></textarea>
         </div>
         <div>
           <label for="input-image">成長写真のWeb画像URL（任意）</label>
@@ -417,7 +469,7 @@
     }
   }
 
-  // 4. データ保存（workTagsを追加）
+  // 4. データ保存（weather / temperatureを追加）
   diaryForm.addEventListener("submit", async (e) => {
     e.preventDefault();
     if (!currentUser) return;
@@ -428,8 +480,14 @@
     const imageUrl = document.getElementById("input-image").value;
     const harvestInput = document.getElementById("input-harvest").value;
     const harvestAmount = harvestInput ? parseFloat(harvestInput) : 0;
+    
+    // 天気と気温の取得
+    const weatherRadio = document.querySelector('input[name="weather"]:checked');
+    const weather = weatherRadio ? weatherRadio.value : "";
+    const tempInput = document.getElementById("input-temp").value;
+    const temperature = tempInput ? parseFloat(tempInput) : null;
 
-    // チェックされた作業タグを取得（配列形式）
+    // 作業タグ
     const selectedTags = Array.from(document.querySelectorAll('input[name="work-tag"]:checked'))
                               .map(cb => cb.value);
 
@@ -439,10 +497,12 @@
         userName: currentUser.displayName || "匿名農家",
         date: date,
         cropName: cropName,
+        weather: weather,
+        temperature: temperature,
         memo: memo,
         imageUrl: imageUrl,
         harvestAmount: harvestAmount,
-        workTags: selectedTags, // タグの配列を保存
+        workTags: selectedTags,
         createdAt: serverTimestamp()
       });
 
@@ -451,6 +511,7 @@
       document.getElementById("input-memo").value = "";
       document.getElementById("input-image").value = "";
       document.getElementById("input-harvest").value = "";
+      document.getElementById("input-temp").value = "";
       document.querySelectorAll('input[name="work-tag"]').forEach(cb => cb.checked = false);
       alert("保存しました！");
     } catch (error) {
@@ -459,7 +520,7 @@
     }
   });
 
-  // 5. データ読み込み（作業タグの表示を追加）
+  // 5. データ読み込み（天気・気温のバッジ表示を追加）
   function loadDiaries() {
     if (unsubscribeSnapshot) unsubscribeSnapshot();
 
@@ -498,16 +559,23 @@
           userTagHtml = `<div class="user-tag">👤 ${escapeHTML(data.userName || "匿名農家")}${isMyPost ? " (自分)" : ""}</div>`;
         }
 
-        // 作業タグのバッジHTML生成
-        let tagsHtml = "";
+        // 天気・気温バッジ
+        let weatherHtml = "";
+        if (data.weather) {
+          const tempStr = (data.temperature !== null && data.temperature !== undefined) ? ` (${data.temperature}℃)` : "";
+          weatherHtml = `<span class="weather-badge">${escapeHTML(data.weather)}${tempStr}</span>`;
+        }
+
+        // 作業タグバッジ
+        let tagsHtml = weatherHtml;
         if (data.workTags && data.workTags.length > 0) {
           const badges = data.workTags.map(t => `<span class="work-badge">${escapeHTML(t)}</span>`).join(" ");
-          tagsHtml += badges;
+          tagsHtml += (tagsHtml ? " " : "") + badges;
         }
 
         // 収穫量バッジ
         if (data.harvestAmount && data.harvestAmount > 0) {
-          tagsHtml += ` <span class="harvest-tag">🌾 収穫: ${data.harvestAmount} kg</span>`;
+          tagsHtml += (tagsHtml ? " " : "") + `<span class="harvest-tag">🌾 収穫: ${data.harvestAmount} kg</span>`;
         }
 
         let deleteBtnHtml = "";
