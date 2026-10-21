@@ -65,6 +65,28 @@
       font-size: 0.8rem;
       padding: 4px 8px;
     }
+    /* タブデザイン */
+    .tab-container {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+      border-bottom: 2px solid #e0e0e0;
+    }
+    .tab-button {
+      flex: 1;
+      padding: 10px;
+      background: none;
+      color: #666;
+      border: none;
+      border-bottom: 3px solid transparent;
+      border-radius: 0;
+      font-weight: bold;
+      font-size: 0.95rem;
+    }
+    .tab-button.active {
+      color: var(--primary-color);
+      border-bottom: 3px solid var(--primary-color);
+    }
     form {
       display: flex;
       flex-direction: column;
@@ -108,6 +130,15 @@
       margin-bottom: 6px;
       color: #555;
     }
+    .user-tag {
+      font-size: 0.75rem;
+      color: #2e7d32;
+      background: #e8f5e9;
+      padding: 2px 6px;
+      border-radius: 4px;
+      margin-bottom: 6px;
+      display: inline-block;
+    }
     .diary-body {
       white-space: pre-wrap;
       font-size: 0.95rem;
@@ -134,40 +165,48 @@
     </div>
   </div>
 
-  <!-- メインコンテンツ（ログイン時のみ表示） -->
+  <!-- メインコンテンツ -->
   <main id="app-content" class="hidden">
-    <!-- 日誌入力フォーム -->
-    <form id="diary-form">
-      <div>
-        <label for="input-date">日付</label>
-        <input type="date" id="input-date" required>
-      </div>
-      <div>
-        <label for="input-crop">作物名</label>
-        <input type="text" id="input-crop" placeholder="例: トマト, ナス" required>
-      </div>
-      <div>
-        <label for="input-memo">作業記録・成長メモ</label>
-        <textarea id="input-memo" placeholder="例: 追肥を実施。実が大きくなってきた。" required></textarea>
-      </div>
-      <button type="submit">日誌を保存する</button>
-    </form>
+
+    <!-- タブ切り替えボタン -->
+    <div class="tab-container">
+      <button id="tab-my" class="tab-button active">自分の記録</button>
+      <button id="tab-all" class="tab-button">みんなの記録 🌐</button>
+    </div>
+
+    <!-- 日誌入力フォーム（「自分の記録」タブの時のみ有効） -->
+    <div id="form-area">
+      <form id="diary-form">
+        <div>
+          <label for="input-date">日付</label>
+          <input type="date" id="input-date" required>
+        </div>
+        <div>
+          <label for="input-crop">作物名</label>
+          <input type="text" id="input-crop" placeholder="例: トマト, ナス" required>
+        </div>
+        <div>
+          <label for="input-memo">作業記録・成長メモ</label>
+          <textarea id="input-memo" placeholder="例: 追肥を実施。実が大きくなってきた。" required></textarea>
+        </div>
+        <button type="submit">日誌を保存する</button>
+      </form>
+    </div>
 
     <!-- 日誌一覧表示エリア -->
-    <h2>これまでの記録</h2>
+    <h2 id="list-title">自分の記録一覧</h2>
     <div id="diary-list" class="diary-list">
       <p>読み込み中...</p>
     </div>
   </main>
 </div>
 
-<!-- Firebase SDK (v10 modular) -->
+<!-- Firebase SDK -->
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
   import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
   import { getFirestore, collection, addDoc, query, where, onSnapshot, serverTimestamp, doc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
-  // 提供されたFirebase設定情報
   const firebaseConfig = {
     apiKey: "AIzaSyBNX6T1YDiQeVdrEHwEgoLVdpj8Bb1Eupc",
     authDomain: "task9-71579.firebaseapp.com",
@@ -177,7 +216,6 @@
     appId: "1:748450048339:web:b6ee4d4a869ef0b9da99a6"
   };
 
-  // Firebase初期化
   const app = initializeApp(firebaseConfig);
   const auth = getAuth(app);
   const db = getFirestore(app);
@@ -193,12 +231,16 @@
   const diaryForm = document.getElementById("diary-form");
   const diaryList = document.getElementById("diary-list");
   const inputDate = document.getElementById("input-date");
+  const formArea = document.getElementById("form-area");
+  const listTitle = document.getElementById("list-title");
+  const tabMy = document.getElementById("tab-my");
+  const tabAll = document.getElementById("tab-all");
 
-  // 今日の日付を初期値にセット
   inputDate.valueAsDate = new Date();
 
   let currentUser = null;
   let unsubscribeSnapshot = null;
+  let currentTab = "my"; // "my" または "all"
 
   // 1. Googleログイン
   btnLogin.addEventListener("click", async () => {
@@ -210,12 +252,9 @@
     }
   });
 
-  // ログアウト
-  btnLogout.addEventListener("click", () => {
-    signOut(auth);
-  });
+  btnLogout.addEventListener("click", () => signOut(auth));
 
-  // 2. ログイン状態の監視
+  // 2. ログイン状態監視
   onAuthStateChanged(auth, (user) => {
     currentUser = user;
     if (user) {
@@ -223,7 +262,7 @@
       loginView.classList.add("hidden");
       userView.classList.remove("hidden");
       appContent.classList.remove("hidden");
-      loadDiaries(user.uid);
+      switchTab("my");
     } else {
       loginView.classList.remove("hidden");
       userView.classList.add("hidden");
@@ -233,7 +272,29 @@
     }
   });
 
-  // 3. データ保存 (Firestore)
+  // 3. タブ切り替え処理
+  tabMy.addEventListener("click", () => switchTab("my"));
+  tabAll.addEventListener("click", () => switchTab("all"));
+
+  function switchTab(tab) {
+    currentTab = tab;
+    if (tab === "my") {
+      tabMy.classList.add("active");
+      tabAll.classList.remove("active");
+      formArea.classList.remove("hidden");
+      listTitle.textContent = "自分の記録一覧";
+    } else {
+      tabAll.classList.add("active");
+      tabMy.classList.remove("active");
+      formArea.classList.add("hidden");
+      listTitle.textContent = "みんなの栽培記録 タイムライン";
+    }
+    if (currentUser) {
+      loadDiaries();
+    }
+  }
+
+  // 4. データ保存
   diaryForm.addEventListener("submit", async (e) => {
     e.preventDefault();
     if (!currentUser) return;
@@ -245,6 +306,7 @@
     try {
       await addDoc(collection(db, "diaries"), {
         uid: currentUser.uid,
+        userName: currentUser.displayName || "匿名農家",
         date: date,
         cropName: cropName,
         memo: memo,
@@ -260,39 +322,55 @@
     }
   });
 
-  // 4. データ読み込み (Firestore リアルタイム監視)
-  function loadDiaries(uid) {
-    const q = query(
-      collection(db, "diaries"),
-      where("uid", "==", uid)
-    );
+  // 5. データ読み込み (自分の記録 vs みんなの記録)
+  function loadDiaries() {
+    if (unsubscribeSnapshot) unsubscribeSnapshot();
+
+    let q;
+    if (currentTab === "my") {
+      q = query(collection(db, "diaries"), where("uid", "==", currentUser.uid));
+    } else {
+      q = query(collection(db, "diaries"));
+    }
 
     unsubscribeSnapshot = onSnapshot(q, (snapshot) => {
       diaryList.innerHTML = "";
       if (snapshot.empty) {
-        diaryList.innerHTML = "<p>まだ記録がありません。投稿してみましょう！</p>";
+        diaryList.innerHTML = "<p>該当する記録がありません。</p>";
         return;
       }
 
-      // クライアント側で日付（date）の降順にソート（インデックスエラー回避のため）
       const docs = [];
       snapshot.forEach(doc => docs.push({ id: doc.id, ...doc.data() }));
       docs.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
 
       docs.forEach((data) => {
+        const isMyPost = data.uid === currentUser.uid;
         const card = document.createElement("div");
         card.className = "diary-card";
+        
+        let userTagHtml = "";
+        if (currentTab === "all") {
+          userTagHtml = `<div class="user-tag">👤 ${escapeHTML(data.userName || "匿名農家")}${isMyPost ? " (自分)" : ""}</div>`;
+        }
+
+        let deleteBtnHtml = "";
+        if (isMyPost) {
+          deleteBtnHtml = `<button class="btn-delete" data-id="${data.id}">削除</button>`;
+        }
+
         card.innerHTML = `
+          ${userTagHtml}
           <div class="diary-header">
             <span>📅 ${escapeHTML(data.date)} | 🥬 ${escapeHTML(data.cropName)}</span>
-            <button class="btn-delete" data-id="${data.id}">削除</button>
+            ${deleteBtnHtml}
           </div>
           <div class="diary-body">${escapeHTML(data.memo)}</div>
         `;
         diaryList.appendChild(card);
       });
 
-      // 削除ボタンのイベントリスナー設定
+      // 削除イベント登録
       document.querySelectorAll(".btn-delete").forEach(button => {
         button.addEventListener("click", async (e) => {
           const id = e.target.getAttribute("data-id");
@@ -308,11 +386,10 @@
       });
     }, (error) => {
       console.error("読み込みエラー:", error);
-      diaryList.innerHTML = "<p>データの取得に失敗しました。</p>";
+      diaryList.innerHTML = "<p>データの取得に失敗しました。セキュリティルールを確認してください。</p>";
     });
   }
 
-  // XSS対策用エスケープ処理
   function escapeHTML(str) {
     if (!str) return "";
     return str.replace(/[&<>'"]/g, 
